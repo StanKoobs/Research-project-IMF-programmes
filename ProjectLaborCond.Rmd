@@ -1,0 +1,369 @@
+---
+title: "CodeProjectLaborConditions"
+author: "Stan Koobs"
+output:
+  word_document: default
+  pdf_document: default
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+rm(list = ls())
+
+setwd("C:/Users/stank/Documents/Jaar 4 uni/RA Saliha Metinsoy/ProjectLaborCond")
+
+#Package needed for accouting for selection bias with negative binomial
+#install.packages("GJRM")
+library(GJRM)
+
+#Package to read the data
+#install.packages("haven")
+library(haven)
+
+#install.packages("texreg")
+library(texreg)
+
+#install.packages("tidyverse")
+library(tidyverse)
+
+#install.packages("Hmisc")
+library(Hmisc)
+
+#Reading in the data
+dfLaborCond = read_dta("baseline_30June2021.dta")
+
+suppressMessages(attach(dfLaborCond))
+
+#View(dfLaborCond)
+
+```
+
+# Data transformation.
+
+```{r}
+
+dfLaborCond$recidivism = rep(0, nrow(dfLaborCond))
+
+
+#Create recidivism variable
+#First 5 rows can be neglected as they will be deleted anyway
+for (i in 6:nrow(dfLaborCond)) {
+  dfLaborCond[i, "recidivism"] = 
+    mean(imfparticipation[(i - 5):(i - 1)], na.rm = T)
+}
+#We take the means not completely appropriate here as we do it row-wise but
+#the rows sometimes suddenly change to a new country
+#However, this is not a not problem since we will delete the first year of 
+#each country. Therefore, we can use this simplification of the 
+#calculation
+
+#Random inspection, results seem to make sense
+dfLaborCond[, c("imfparticipation", "recidivism")][61:80, ]
+
+#Including the lagged regulated variable
+dfLaborCond$Lagregulated = Lag(dfLaborCond$regulatedlabormarket, -1)
+dfLaborCond$Lagfiringcosts = Lag(dfLaborCond$firingcosts, -1)
+dfLaborCond$Lagevent = Lag(dfLaborCond$event, -1)
+
+detach(dfLaborCond)
+
+#New dataset with imcomplete years removed
+newdfLaborCond = dfLaborCond %>% filter(year > 1980) %>% 
+  filter(year < 2014)
+
+#attach(newdfLaborCond)
+
+```
+
+
+# Labor conditions (laborconditions) as a dependent variable
+
+```{r}
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  laborconditions ~ binary_ilzetzki_exchange + inlineblmausa + unsc + 
+    democracy + left + Lagregulated),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+### Robustness check 1- with a different exchange rate coding #############
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  laborconditions ~ fixed_exch + inlineblmausa + unsc + 
+    democracy + left + Lagregulated),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+
+### Robustness check 2-with G7 voting ####################################
+
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  laborconditions ~ fixed_exch + inlineblhetg7 + unsc + 
+    democracy + left + Lagregulated),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+#### Robustness check 3- with firing costs ################################
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  laborconditions ~ binary_ilzetzki_exchange + inlineblmausa + unsc + 
+    democracy + left + Lagfiringcosts),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+### Robustness check 4- with lagged strike ################################
+
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  laborconditions ~ binary_ilzetzki_exchange + inlineblmausa + unsc + 
+    democracy + left + Lagevent),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+
+### Robustness check 5- with plpdemocracy #################################
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  laborconditions ~ binary_ilzetzki_exchange + inlineblmausa + unsc + 
+    left + Lagregulated + combinedplp*democracy),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+### Robustness check 6- with left and democracy interaction ###############
+
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  laborconditions ~ binary_ilzetzki_exchange + inlineblmausa + unsc + 
+    Lagregulated + democracy*left),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+sum(!is.na(newdfLaborCond$laborconditions) & 
+      !is.na(newdfLaborCond$binary_ilzetzki_exchange) &
+      !is.na(newdfLaborCond$inlineblmausa) &
+      !is.na(newdfLaborCond$unsc) &
+      !is.na(newdfLaborCond$Lagregulated) &
+      !is.na(newdfLaborCond$democracy) &
+      !is.na(newdfLaborCond$left) &
+      !is.na(newdfLaborCond$wb_gdppercapitagrowth) & 
+      !is.na(newdfLaborCond$wb_gdppercapita) &
+      !is.na(newdfLaborCond$gdp) &
+      !is.na(newdfLaborCond$currentaccountbalance) &
+      !is.na(newdfLaborCond$externaldebt_gni) &
+      !is.na(newdfLaborCond$totalinternationalreservesusdoll) &
+      !is.na(newdfLaborCond$time) &
+      !is.na(newdfLaborCond$recidivism) &
+      !is.na(newdfLaborCond$imfparticipation))
+
+
+
+```
+
+
+# Weighted labor conditions (weighted_laborcondition) as a dependent variable
+
+```{r}
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  weighted_laborconditions ~ binary_ilzetzki_exchange + inlineblmausa + 
+    unsc + democracy + left + Lagregulated),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  weighted_laborconditions ~ fixed_exch + inlineblmausa + unsc + 
+    democracy + left + Lagregulated),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+```
+
+
+# Relative labor conditions (relative_laborcon) as a dependent variable
+
+```{r}
+
+
+library(sampleSelection)
+
+out = selection(
+  #Selection equation
+  selection = 
+    imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  outcome = 
+    relative_laborcon ~ binary_ilzetzki_exchange + inlineblmausa + unsc + 
+    democracy + left + Lagregulated,
+  data = newdfLaborCond,
+  method = "ml"
+)
+
+summary(out)
+
+
+out = selection(
+  #Selection equation
+  selection = 
+    imfparticipation ~ wb_gdppercapitagrowth + wb_gdppercapita + gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservesusdoll + time + recidivism,
+  #Outcome equation
+  outcome = 
+    relative_laborcon ~ fixed_exch + inlineblmausa + unsc + 
+    democracy + left + Lagregulated,
+  data = newdfLaborCond,
+  method = "2step"
+)
+
+summary(out)
+
+
+```
+
+
+```{r}
+
+out = gjrm(list(
+  #Selection equation
+  imfparticipation ~ wb_gdppercapitagrowth + log_gdp + 
+    currentaccountbalance + externaldebt_gni + 
+    totalinternationalreservessdrsgo + recidivism,
+  #Outcome equation
+  unrest ~ mobility:laborconditions + left + l_pop + log_gdppercapita + 
+    democracy + urban),
+           
+  data = newdfLaborCond, 
+  Model = "BSS",
+  margins = c("probit", "NBI")
+)
+
+summary(out)
+
+
+
+install.packages("interplot")
+library(interplot)
+
+
+interplot(m = out, var1 = "mobility", var2 = "laborconditions")
+
+
+p = ggplot() + geom_abline(intercept = 0, 
+                       slope = out$coefficients["mobility:laborconditions"]) +
+  xlim(0, 15) +
+  ylim(-5, 1) +
+  xlab("laborconditions") +
+  ylab("mobility")
+
+p  
+
+```
+
+
