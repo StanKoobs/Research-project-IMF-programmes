@@ -1,0 +1,265 @@
+---
+title: "AnalysisLettersIMFTurkey"
+author: "Stan Koobs"
+date: "9/6/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages
+
+
+```{r }
+
+### In this script we define the packages to be used ######################
+
+# List with the packages which we need
+ListofPackages <- c("readr", "devtools", "ggplot2", "dplyr", "tidytext",
+                   "textdata", "tidyr", "wordcloud", "stringr", "igraph", 
+                   "ggraph", "cowplot", "ggtext", "showtext", "patchwork")
+NewPackages <- ListofPackages[!(ListofPackages %in% 
+                                  installed.packages()[,"Package"])]
+
+if (length(NewPackages) > 0) {
+  install.packages(NewPackages)
+}
+
+lapply(ListofPackages, require, character.only = TRUE)
+
+# No need to keep these variables
+rm(ListofPackages, NewPackages)
+
+```
+
+
+
+## ggplot theme
+
+```{r}
+
+##### In this script we define our own ggplot theme #######################
+
+ThesisggTheme <- function() {
+  theme(panel.background = element_rect(fill = "grey96"),
+        axis.line = element_blank(),
+        panel.border = element_rect(colour = "gray82", fill = NA,
+                                    size = 1.5),
+        panel.grid.major = element_line(colour = "grey70", 
+                                        linetype = "dashed"),
+        panel.grid.minor = element_line(colour = "grey70", 
+                                        linetype = "dashed"),
+        axis.text.x = element_text(size= 10),
+        axis.text.y = element_text(size= 11),
+        axis.title.x = element_text(size = 13),
+        axis.title.y = element_text(size = 13),
+        axis.ticks = element_line(size = 1.5),
+        axis.ticks.length = unit(1.5, "mm")
+  )
+}
+
+```
+
+
+## Data preparation
+
+```{r}
+
+### In this script we load in the IMF letters #############################
+
+# Load the necessary packages
+#source("Packages.R")
+
+
+# Function that conveniently processes a letter
+# Tokenizing means putting each unit (for this analysis a unit is a word)
+# in a seperate row
+tokenizeDocument <- function(document) {
+  name = as.character(rlang::enexpr(document))
+  document = document %>%
+    unnest_tokens(word, text)
+  document = document %>% 
+    mutate(year = str_sub(name, -4, -1))
+  return(document)
+}
+
+# Load a letter as a tibble
+year2002 = tibble(text = read_file("IMFLetters/2002.txt"))
+# Tokenize it 
+dfletters = tokenizeDocument(year2002)
+
+year2004 = tibble(text = read_file("IMFLetters/2004.txt"))
+# Tokenize it and add it to the previous letter(s)
+dfletters = bind_rows(dfletters, tokenizeDocument(year2004)) 
+
+year2007 = tibble(text = read_file("IMFLetters/2007.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2007))
+
+year2010 = tibble(text = read_file("IMFLetters/2010.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2010))
+
+year2012 = tibble(text = read_file("IMFLetters/2012.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2012)) 
+
+year2013 = tibble(text = read_file("IMFLetters/2013.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2013)) 
+
+year2014 = tibble(text = read_file("IMFLetters/2014.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2014)) 
+
+year2016 = tibble(text = read_file("IMFLetters/2016.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2016)) 
+
+year2017 = tibble(text = read_file("IMFLetters/2017.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2017))
+
+year2018 = tibble(text = read_file("IMFLetters/2018.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2018))
+
+year2019 = tibble(text = read_file("IMFLetters/2019.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2019)) 
+
+year2021 = tibble(text = read_file("IMFLetters/2021.txt"))
+dfletters = bind_rows(dfletters, tokenizeDocument(year2021)) 
+
+# We now created a dataframe that stores all words in a convenient way 
+# It also allows us to keep track of the year in which it was published
+
+```
+
+
+## Frequency analysis
+
+```{r}
+
+### In this script we analyze the most frequent words #####################
+
+rm(list = ls())
+
+source("Code/Packages.R")
+source("Code/OwnggTheme.R")
+source("Code/DataPreparation.R")
+
+
+dfletters %>%
+  count(word, sort = TRUE)
+# Not interesting, we need to remove stop words
+
+CleanPopularWords = dfletters %>% 
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE)
+# These words seem to make sense
+
+set.seed(2)
+CleanPopularWords %>%
+  with(wordcloud(word, n, max.words = 30, scale = c(4,.5)))
+
+```
+
+
+## Sentiment analysis
+
+```{r}
+
+### In this script we perform the sentiment analysis ######################
+
+rm(list = ls())
+
+source("Code/Packages.R")
+source("Code/OwnggTheme.R")
+source("Code/DataPreparation.R")
+
+get_sentiments("afinn")
+get_sentiments("bing")
+get_sentiments("nrc")
+
+### First using the bing dictionary
+
+# Find all words in dataset that have a bing sentiment
+bingsentiments = dfletters %>%
+  inner_join(get_sentiments("bing"))
+
+# Count all positive and negatives and deduct them from each other 
+totalsentiments = bingsentiments %>% 
+  group_by(year) %>% 
+  count(year, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
+  mutate(sentiment = positive - negative) %>%
+  mutate(method = "bing")
+
+# Dataset with these values
+totalsentiments
+
+# Plot of absolute sentiments
+ggplot(totalsentiments, aes(year, sentiment)) +
+  geom_col(fill = "skyblue") +
+  ThesisggTheme() +
+  ggtitle("Sentiment plot over the years of IMF letters Turkey")
+
+# Create dataset in which sentiments are proportions 
+weightedsentiment = totalsentiments %>%
+  mutate(weightedsentiment = sentiment / (negative + positive))
+
+# Relative sentiment plot
+ggplot(weightedsentiment, aes(year, weightedsentiment)) +
+  geom_col(fill = "skyblue") +
+  ThesisggTheme() +
+  ggtitle("Relative sentiment plot over the years of IMF letters Turkey")
+
+# Relative sentiment plot using a line
+# Seems less readable
+ggplot(weightedsentiment, aes(x = as.double(year), y = weightedsentiment)) +
+  geom_line(colour = "skyblue", size = 1.5) +
+  ThesisggTheme() +
+  ggtitle("Relative sentiment plot over the years of IMF letters Turkey")
+
+
+
+### Now using the AFINN dictionary
+
+afinn = dfletters %>%
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(year) %>%
+  summarise(sentiment = sum(value)) %>%
+  mutate(method = "afinn")
+  
+ggplot(afinn, aes(year, sentiment)) +
+  geom_col(fill = "skyblue") +
+  ThesisggTheme() +
+  ggtitle("Sentiment plot over the years of IMF letters Turkey")
+
+
+
+### Now using NRC
+
+
+nrc = dfletters %>%
+  inner_join(get_sentiments("nrc")) %>%
+  group_by(year) %>% 
+  count(year, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
+  mutate(sentiment = positive - negative) %>%
+  mutate(method = "nrc")
+
+ggplot(nrc, aes(year, sentiment)) +
+  geom_col(fill = "skyblue") +
+  ThesisggTheme() +
+  ggtitle("Sentiment plot over the years of IMF letters Turkey")
+
+
+
+### Comparison
+
+totaldf = bind_rows(totalsentiments, afinn, nrc)
+
+totaldf %>%
+  ggplot(aes(year, sentiment, fill = method)) +
+  geom_col(fill = "skyblue") +
+  facet_wrap(~method, ncol = 1, scales = "free_y") +
+  ThesisggTheme()
+
+```
+
+
